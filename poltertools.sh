@@ -67,7 +67,9 @@ fix_permissions() {
       find /var/lib/ghost/content -type d -exec chmod u+rwx,g+rwx {} \; && \
       find /var/lib/ghost/content/logs -type d -exec chmod 777 {} \; && \
       touch /var/lib/ghost/content/logs/http___localhost_2368_development.error.log && \
-      chmod 666 /var/lib/ghost/content/logs/http___localhost_2368_development.error.log
+      chmod 666 /var/lib/ghost/content/logs/http___localhost_2368_development.error.log && \
+      # Ensure theme directory is readable
+      chmod -R 755 /var/lib/ghost/content/themes
     '
 }
 
@@ -121,6 +123,77 @@ package_theme() {
   fi
 }
 
+# Function to clean up Docker volumes
+clean_docker_volumes() {
+  echo "Cleaning up Ghost volumes..."
+  docker_cmd=$(get_docker_compose_cmd)
+  
+  # Stop containers if they're running
+  $docker_cmd down
+  
+  # Remove volumes
+  echo "Removing Docker volumes..."
+  docker volume rm ghost_content ghost_db 2>/dev/null || true
+  echo "✨ Cleanup complete"
+}
+
+# Function to restart Ghost container
+restart_ghost() {
+  echo "Restarting Ghost..."
+  docker_cmd=$(get_docker_compose_cmd)
+  
+  # Restart only the ghost service
+  $docker_cmd restart ghost
+  
+  # Wait a few seconds for the container to initialize
+  echo "Waiting for Ghost to restart..."
+  sleep 5
+  
+  # Check if the container is running
+  if $docker_cmd ps | grep -q "ghost"; then
+    show_access_urls
+  else
+    echo "❌ Error: Ghost container failed to restart properly."
+    echo "Check the logs with: $docker_cmd logs"
+  fi
+}
+
+# Function to show help message
+show_help() {
+  echo "Poltertools - Ghost Theme Development Helper"
+  echo ""
+  echo "Usage: poltertools [command]"
+  echo ""
+  echo "Commands:"
+  echo "  start     Start Ghost instance with your theme directory mounted"
+  echo "  stop      Stop the Ghost instance and related containers"
+  echo "  restart   Restart Ghost (needed after locale file changes)"
+  echo "  clean     Remove all Docker volumes for a fresh start"
+  echo "  package   Create a ZIP file of your theme for deployment"
+  echo "  help      Show this help message"
+  echo ""
+  echo "Examples:"
+  echo "  poltertools start              # Start Ghost with your theme"
+  echo "  poltertools restart            # Restart after locale changes"
+  echo "  poltertools clean && start     # Start fresh"
+  echo ""
+  echo "Environment Variables:"
+  echo "  GHOST_THEMES_DIR   Path to your themes directory"
+  echo "                     Default: ./content/themes"
+  echo ""
+  echo "Live Reload Behavior:"
+  echo "  • Immediate changes (no restart needed):"
+  echo "    - Template files (.hbs)"
+  echo "    - CSS/SCSS files"
+  echo "    - JavaScript files"
+  echo "    - Images and assets"
+  echo ""
+  echo "  • Changes requiring restart:"
+  echo "    - Locale files (.json)"
+  echo "    - Theme configuration"
+  echo "    - Ghost settings"
+}
+
 # Main script logic
 case $1 in
   start)
@@ -129,10 +202,20 @@ case $1 in
   stop)
     stop_docker_compose
     ;;
+  restart)
+    restart_ghost
+    ;;
+  clean)
+    clean_docker_volumes
+    ;;
   package)
     package_theme
     ;;
+  help)
+    show_help
+    ;;
   *)
-    echo "Usage: poltertools [start|stop|package]"
+    echo "Usage: poltertools [start|stop|restart|clean|package|help]"
+    echo "Run 'poltertools help' for detailed information"
     ;;
 esac

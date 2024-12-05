@@ -1,0 +1,34 @@
+services:
+  ghost:
+    image: ghost:latest
+    ports:
+      - "2368:2368"
+    volumes:
+      - ghost_content:/var/lib/ghost/content
+      - ${GHOST_THEMES_DIR:-./content/themes}:/var/lib/ghost/content/themes
+    environment:
+      NODE_ENV: development
+      database__client: mysql
+      database__connection__host: db
+      database__connection__user: ghost
+      database__connection__password: ghost
+      database__connection__database: ghost
+    user: "node"
+    restart: always
+    depends_on:
+      - db
+
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ghostroot
+      MYSQL_USER: ghost
+      MYSQL_PASSWORD: ghost
+      MYSQL_DATABASE: ghost
+    volumes:
+      - ghost_db:/var/lib/mysql
+    restart: always
+
+volumes:
+  ghost_content:
+  ghost_db:

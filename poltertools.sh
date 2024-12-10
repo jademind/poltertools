@@ -113,13 +113,51 @@ package_theme() {
   theme_name=$(basename "$GHOST_THEMES_DIR")
   timestamp=$(date +%Y%m%d-%H%M%S)
   zip_file="${theme_name}-${timestamp}.zip"
+  ignore_file=".package-ignore"
 
   echo "Packaging theme: $theme_name"
+  
+  # Store the original directory
+  original_dir=$(pwd)
+  
   if cd "$GHOST_THEMES_DIR"; then
-    zip -r "../$zip_file" .
-    echo "Theme packaged as: $zip_file"
+    # Create a temporary exclusion pattern file for zip
+    temp_exclude=$(mktemp)
+    
+    # Read .package-ignore and format each line for zip's exclude pattern
+    while IFS= read -r pattern || [ -n "$pattern" ]; do
+      # Skip empty lines and comments
+      [[ -z "$pattern" || "$pattern" =~ ^# ]] && continue
+      # Add proper wildcards for directory patterns
+      if [[ "$pattern" == *"/" ]]; then
+        echo "$pattern*" >> "$temp_exclude"
+      else
+        # Handle both file and directory patterns
+        echo "$pattern" >> "$temp_exclude"
+        echo "*/$pattern" >> "$temp_exclude"  # Match pattern in subdirectories
+      fi
+    done < "$original_dir/$ignore_file"
+
+    # Debug output
+    echo "Using the following exclusion patterns:"
+    cat "$temp_exclude"
+
+    # Create zip file with exclusions
+    if zip -r "$original_dir/$zip_file" . -x@"$temp_exclude"; then
+      echo "✨ Theme packaged successfully as: $zip_file"
+    else
+      echo "❌ Error creating zip file"
+      cd "$original_dir"
+      rm "$temp_exclude"
+      exit 1
+    fi
+
+    # Clean up temporary file
+    cd "$original_dir"
+    rm "$temp_exclude"
   else
     echo "Failed to access directory: $GHOST_THEMES_DIR"
+    exit 1
   fi
 }
 

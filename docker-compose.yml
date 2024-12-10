@@ -5,7 +5,7 @@ services:
       - "2368:2368"
     volumes:
       - ghost_content:/var/lib/ghost/content
-      - ${GHOST_THEMES_DIR:-./content/themes}:/var/lib/ghost/content/themes:ro
+      - ${GHOST_THEMES_DIR:-./content/themes}:/var/lib/ghost/content/themes
     environment:
       NODE_ENV: development
       database__client: mysql

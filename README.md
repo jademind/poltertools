@@ -14,51 +14,51 @@
 
 ## Requirements
 
-- Docker and Docker Compose installed on your system.
-- Bash shell.
+- Docker and Docker Compose installed on your system
+- Bash shell
 
 ## Installation
 
-1. Save the script as `poltertools` in a directory included in your `PATH` (e.g., `/usr/local/bin`):
+1. Clone this repository:
    ```bash
-   sudo mv poltertools /usr/local/bin/
-   sudo chmod +x /usr/local/bin/poltertools
+   git clone https://github.com/jademind/poltertools.git
+   cd poltertools
    ```
 
-2. Ensure Docker and Docker Compose are installed and configured.
+2. Ensure Docker and Docker Compose are installed and configured on your system.
 
 ## Usage
 
-`poltertools` provides the following commands:
+`poltertools.sh` provides the following commands:
 
 ### 1. Start Ghost Locally
 Start a local Ghost instance with your themes directory linked:
 ```bash
-poltertools start
+./poltertools.sh start
 ```
 
 ### 2. Stop Ghost
 Stop the running Ghost instance:
 ```bash
-poltertools stop
+./poltertools.sh stop
 ```
 
 ### 3. Restart Ghost
 Restart the Ghost instance (useful when changing locale files):
 ```bash
-poltertools restart
+./poltertools.sh restart
 ```
 
 ### 4. Clean Environment
 Remove all Docker volumes to start fresh:
 ```bash
-poltertools clean
+./poltertools.sh clean
 ```
 
 ### 5. Package a Theme
-Create a ZIP file of the current theme directory:
+Create a ZIP file of the current theme directory and save it in the root directory:
 ```bash
-poltertools package
+./poltertools.sh package
 ```
 
 ## Live Reload Behavior
@@ -78,7 +78,7 @@ The development environment is configured for optimal development experience wit
 
 To apply these changes, use:
 ```bash
-poltertools restart
+./poltertools.sh restart
 ```
 
 ## Environment Variables
@@ -98,22 +98,22 @@ poltertools restart
 
 2. Start Ghost with Docker:
    ```bash
-   poltertools start
+   ./poltertools.sh start
    ```
 
 3. Edit your theme files locally:
    - Template changes will be reflected immediately
-   - For locale changes, run `poltertools restart`
+   - For locale changes, run `./poltertools.sh restart`
 
 4. Once ready, package the theme:
    ```bash
-   poltertools package
+   ./poltertools.sh package
    ```
 
 5. To start fresh:
    ```bash
-   poltertools clean
-   poltertools start
+   ./poltertools.sh clean
+   ./poltertools.sh start
    ```
 
 ## Access URLs
@@ -128,8 +128,8 @@ When Ghost is running, you can access:
 - **Permission Issues**: The script automatically handles permissions for the Ghost content directory.
 - **Cache Issues**: If changes aren't reflecting:
   1. Try clearing your browser cache
-  2. Use `poltertools restart` for locale changes
-  3. Use `poltertools clean` to start fresh
+  2. Use `./poltertools.sh restart` for locale changes
+  3. Use `./poltertools.sh clean` to start fresh
 
 ## Notes
 

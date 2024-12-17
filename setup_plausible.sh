@@ -26,6 +26,24 @@ clone_repository() {
   git clone -b "$pl_version" --single-branch https://github.com/plausible/community-edition "$pl_dir"
 }
 
+# Function to URL encode a string
+urlencode() {
+  local string="$1"
+  local strlen=${#string}
+  local encoded=""
+  local pos c o
+  
+  for (( pos=0 ; pos<strlen ; pos++ )); do
+     c=${string:$pos:1}
+     case "$c" in
+        [-_.~a-zA-Z0-9] ) o="${c}" ;;
+        * )               printf -v o '%%%02x' "'$c"
+     esac
+     encoded+="${o}"
+  done
+  echo "${encoded}"
+}
+
 # Function to create environment configuration
 create_env_config() {
   local pl_dir="$1"
@@ -35,48 +53,54 @@ create_env_config() {
   local local_ip=$(get_local_ip)
   local hostname=$(echo "$base_url" | sed -e 's|^[^/]*//||' -e 's|/.*$||')
   
+  # URL encode the database password
+  local encoded_password=$(urlencode "$DB_PASSWORD")
+  
   echo "Configuring environment variables..."
-  cat <<EOF > "$pl_dir/.env"
-BASE_URL=$base_url
-SECRET_KEY_BASE=$SECRET_KEY_BASE
-HTTP_PORT=$http_port
-HTTPS_PORT=$https_port
-# Socket configuration for both local development and production
-SOCKET_CHECK_ORIGIN=["http://localhost:$http_port", "http://$local_ip:$http_port", "$base_url", "https://$hostname"]
-# Database configuration with secure password
-DATABASE_URL=postgres://plausible:${DB_PASSWORD}@plausible_db:5432/plausible_db
-POSTGRES_PASSWORD=${DB_PASSWORD}
-# SMTP configuration (uncomment and configure for production)
-# SMTP_HOST_ADDR=smtp.your-email-server.com
-# SMTP_HOST_PORT=587
-# SMTP_USER_NAME=your-username
-# SMTP_PASSWORD=your-password
-# SMTP_HOST_SSL_ENABLED=true
-# SMTP_RETRIES=2
-# MAILER_EMAIL=your-from-email@your-domain.com
-# Additional security settings for production
-# DISABLE_REGISTRATION=true
-EOF
+  
+  # Write the .env file line by line
+  {
+    echo "BASE_URL=$base_url"
+    echo "SECRET_KEY_BASE=$SECRET_KEY_BASE"
+    echo "HTTP_PORT=$http_port"
+    echo "HTTPS_PORT=$https_port"
+    echo "# Socket configuration for both local development and production"
+    printf "SOCKET_CHECK_ORIGIN='[\"http://localhost\", \"http://127.0.0.1\", \"http://localhost:%d\", \"http://127.0.0.1:%d\", \"http://%s\", \"http://%s:%d\", \"%s\", \"https://%s\"]'\n" \
+      "$http_port" "$http_port" "$local_ip" "$local_ip" "$http_port" "$base_url" "$hostname"
+    echo "# Database configuration with secure password"
+    echo "DATABASE_URL=postgres://plausible:${encoded_password}@plausible_db:5432/plausible_db"
+    echo "POSTGRES_PASSWORD=${DB_PASSWORD}"
+    echo "# SMTP configuration (uncomment and configure for production)"
+    echo "# SMTP_HOST_ADDR=smtp.your-email-server.com"
+    echo "# SMTP_HOST_PORT=587"
+    echo "# SMTP_USER_NAME=your-username"
+    echo "# SMTP_PASSWORD=your-password"
+    echo "# SMTP_HOST_SSL_ENABLED=true"
+    echo "# SMTP_RETRIES=2"
+    echo "# MAILER_EMAIL=your-from-email@your-domain.com"
+    echo "# Additional security settings for production"
+    echo "# DISABLE_REGISTRATION=true"
+  } > "$pl_dir/.env"
 
-  # Create a sample production config that users can reference
-  cat <<EOF > "$pl_dir/.env.production.sample"
-BASE_URL=https://analytics.your-domain.com
-SECRET_KEY_BASE=$SECRET_KEY_BASE
-# Production socket configuration
-SOCKET_CHECK_ORIGIN=["https://analytics.your-domain.com"]
-# Database configuration
-DATABASE_URL=postgres://postgres:postgres@plausible_db:5432/plausible_db
-# SMTP configuration
-SMTP_HOST_ADDR=smtp.your-email-server.com
-SMTP_HOST_PORT=587
-SMTP_USER_NAME=your-username
-SMTP_PASSWORD=your-password
-SMTP_HOST_SSL_ENABLED=true
-SMTP_RETRIES=2
-MAILER_EMAIL=your-from-email@your-domain.com
-# Security settings
-DISABLE_REGISTRATION=true
-EOF
+  # Create the production sample file
+  {
+    echo "BASE_URL=https://analytics.your-domain.com"
+    echo "SECRET_KEY_BASE=$SECRET_KEY_BASE"
+    echo "# Production socket configuration"
+    printf "SOCKET_CHECK_ORIGIN='[\"https://analytics.your-domain.com\"]'\n"
+    echo "# Database configuration"
+    echo "DATABASE_URL=postgres://postgres:postgres@plausible_db:5432/plausible_db"
+    echo "# SMTP configuration"
+    echo "SMTP_HOST_ADDR=smtp.your-email-server.com"
+    echo "SMTP_HOST_PORT=587"
+    echo "SMTP_USER_NAME=your-username"
+    echo "SMTP_PASSWORD=your-password"
+    echo "SMTP_HOST_SSL_ENABLED=true"
+    echo "SMTP_RETRIES=2"
+    echo "MAILER_EMAIL=your-from-email@your-domain.com"
+    echo "# Security settings"
+    echo "DISABLE_REGISTRATION=true"
+  } > "$pl_dir/.env.production.sample"
 }
 
 # Function to create docker compose override
@@ -105,11 +129,24 @@ EOF
 
 # Function to get local IP address
 get_local_ip() {
-  # Try to get IP address, fallback to localhost if not found
-  local ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+  # Try different methods to get IP address
+  local ip=""
+  
+  # Try hostname -I first (Linux)
+  ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+  
+  # If that fails, try ifconfig (macOS and some Linux)
   if [ -z "$ip" ]; then
-    ip="localhost"
+    if command -v ifconfig >/dev/null 2>&1; then
+      ip=$(ifconfig | grep 'inet ' | grep -v '127.0.0.1' | head -n1 | awk '{print $2}')
+    fi
   fi
+  
+  # If all methods fail, use localhost
+  if [ -z "$ip" ]; then
+    ip="127.0.0.1"
+  fi
+  
   echo "$ip"
 }
 
@@ -119,6 +156,7 @@ show_access_urls() {
   local http_port="$2"
   local https_port="$3"
   local local_ip=$(get_local_ip)
+  local hostname=$(echo "$base_url" | sed -e 's|^[^/]*//||' -e 's|/.*$||')
   
   echo ""
   echo "🎉 Plausible Analytics is running!"
@@ -137,6 +175,9 @@ show_access_urls() {
   else
     echo "🔒 https://$local_ip:$https_port"
   fi
+  echo ""
+  echo "Important: For local development, add this line to your /etc/hosts file:"
+  echo "127.0.0.1 $hostname"
   echo ""
   echo "Note: For HTTPS to work, you need to configure SSL certificates"
   echo ""
@@ -292,11 +333,6 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   HTTP_PORT=80
   HTTPS_PORT=443
   
-  # Load environment file if it exists
-  if [ -f "$PL_DIR/.env" ]; then
-    source "$PL_DIR/.env"
-  fi
-  
   # Process commands
   case $1 in
     setup)
@@ -313,7 +349,7 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
       cleanup_installation "$PL_DIR"
       ;;
     help)
-      show_help
+      show_help 
       ;;
     *)
       echo "Usage: setup_plausible.sh [setup|start|stop|clean|help] [options]"

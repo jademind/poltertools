@@ -110,17 +110,51 @@ stop_docker_compose() {
 # Function to package the theme into a ZIP file
 package_theme() {
   check_env_variable
-  theme_name=$(basename "$GHOST_THEMES_DIR")
+  
+  # List all directories in the themes directory
+  echo "Available themes:"
+  themes=()
+  index=1
+  
+  # Store themes in an array and display them with numbers
+  while IFS= read -r dir; do
+    # Skip hidden directories (starting with .)
+    if [ -d "$dir" ] && [[ ! "$(basename "$dir")" =~ ^\. ]]; then
+      themes+=("$dir")
+      echo "$index) $(basename "$dir")"
+      ((index++))
+    fi
+  done < <(find "$GHOST_THEMES_DIR" -maxdepth 1 -mindepth 1 -type d)
+  
+  # Check if any themes were found
+  if [ ${#themes[@]} -eq 0 ]; then
+    echo "❌ No themes found in $GHOST_THEMES_DIR"
+    exit 1
+  fi
+  
+  # Prompt user to select a theme
+  echo ""
+  read -p "Select a theme number (1-${#themes[@]}): " selection
+  
+  # Validate selection
+  if ! [[ "$selection" =~ ^[0-9]+$ ]] || [ "$selection" -lt 1 ] || [ "$selection" -gt ${#themes[@]} ]; then
+    echo "❌ Invalid selection"
+    exit 1
+  fi
+  
+  # Get the selected theme path and name
+  selected_theme="${themes[$((selection-1))]}"
+  theme_name=$(basename "$selected_theme")
   timestamp=$(date +%Y%m%d-%H%M%S)
   zip_file="${theme_name}-${timestamp}.zip"
   ignore_file=".package-ignore"
-
+  
   echo "Packaging theme: $theme_name"
   
   # Store the original directory
   original_dir=$(pwd)
   
-  if cd "$GHOST_THEMES_DIR"; then
+  if cd "$selected_theme"; then
     # Create a temporary exclusion pattern file for zip
     temp_exclude=$(mktemp)
     
@@ -137,11 +171,11 @@ package_theme() {
         echo "*/$pattern" >> "$temp_exclude"  # Match pattern in subdirectories
       fi
     done < "$original_dir/$ignore_file"
-
+    
     # Debug output
     echo "Using the following exclusion patterns:"
     cat "$temp_exclude"
-
+    
     # Create zip file with exclusions
     if zip -r "$original_dir/$zip_file" . -x@"$temp_exclude"; then
       echo "✨ Theme packaged successfully as: $zip_file"
@@ -151,12 +185,12 @@ package_theme() {
       rm "$temp_exclude"
       exit 1
     fi
-
+    
     # Clean up temporary file
     cd "$original_dir"
     rm "$temp_exclude"
   else
-    echo "Failed to access directory: $GHOST_THEMES_DIR"
+    echo "Failed to access directory: $selected_theme"
     exit 1
   fi
 }

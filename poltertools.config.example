@@ -1,0 +1,29 @@
+# Ghost Configuration
+# Your Ghost Content API key (for reading content)
+GHOST_API_KEY="your_ghost_content_api_key_here"
+# Your Ghost Admin API key (for writing content)
+GHOST_ADMIN_KEY="your_ghost_admin_api_key_here"
+# Your Ghost blog URL
+GHOST_URL="https://your-blog-url.com"
+# Your local Ghost instance URL (for development)
+GHOST_LOCAL_URL="http://localhost:2368"
+# Your local Ghost Content API key (for reading content)
+GHOST_LOCAL_API_KEY="your_local_ghost_content_api_key_here"
+# Your local Ghost Admin API key (for writing content)
+GHOST_LOCAL_ADMIN_KEY="your_local_ghost_admin_api_key_here"
+# Path to your Ghost themes directory
+GHOST_THEMES_DIR="./content/themes"
+
+# WhisperVeil Configuration
+# Type of LLM to use (openai, etc)
+LLM_TYPE="openai"
+# Your LLM API key
+LLM_API_KEY="your_llm_api_key_here"
+# Interval between posts
+POST_INTERVAL="1h"
+# LLM model to use
+LLM_MODEL="gpt-3.5-turbo"
+
+# Backup Configuration
+# Directory where backups will be stored
+BACKUP_DIR="ghost_backups" 

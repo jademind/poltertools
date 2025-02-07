@@ -1,5 +1,20 @@
 #!/bin/bash
 
+# Configuration variables
+CONFIG_FILE="poltertools.config"
+DATE_FORMAT=$(date +%Y%m%d_%H%M%S)
+DEBUG=false
+
+# Function to load configuration
+load_config() {
+    if [ ! -f "$CONFIG_FILE" ]; then
+        echo "Error: Configuration file not found"
+        echo "Please copy poltertools.config.example to poltertools.config and update the values"
+        exit 1
+    fi
+    source "$CONFIG_FILE"
+}
+
 # Function to check if GHOST_THEMES_DIR is set, and use a default if not
 check_env_variable() {
   if [ -z "$GHOST_THEMES_DIR" ]; then
@@ -230,11 +245,522 @@ restart_ghost() {
   fi
 }
 
+# Backup Functions
+backup_posts() {
+    local backup_path="$1"
+    local page=1
+    local has_more=true
+    
+    echo "Backing up posts..."
+    
+    while [ "$has_more" = true ]; do
+        local response=$(curl -s \
+            -H "Accept-Version: v5.0" \
+            "${GHOST_URL}/ghost/api/content/posts/?key=${GHOST_API_KEY}&limit=100&page=$page&include=authors,tags")
+        
+        # Check if we got valid JSON
+        if ! echo "$response" | jq . >/dev/null 2>&1; then
+            echo "Error: Invalid JSON response"
+            return 1
+        fi
+        
+        # Save this page of posts
+        echo "$response" | jq . > "$backup_path/posts/page_${page}.json"
+        
+        # Check if there are more pages
+        local total=$(echo "$response" | jq -r '.meta.pagination.total')
+        local current_count=$((page * 100))
+        
+        if [ "$current_count" -ge "$total" ]; then
+            has_more=false
+        fi
+        
+        ((page++))
+    done
+    
+    echo "✓ Posts backed up"
+}
+
+backup_images() {
+    local backup_path="$1"
+    local posts_dir="$backup_path/posts"
+    local images_dir="$backup_path/images"
+    
+    echo "Backing up images..."
+    
+    # Create a list of all image URLs from posts
+    for post_file in "$posts_dir"/*.json; do
+        # Extract image URLs from post content and feature images
+        local urls=$(jq -r '.posts[] | [.feature_image, (.html | scan("src=\"([^\"]+)\"") | .[])] | .[]' "$post_file" | grep -v "^null$")
+        
+        while read -r url; do
+            if [ -n "$url" ]; then
+                # Extract filename from URL
+                local filename=$(basename "$url")
+                # Download image if it doesn't exist
+                if [ ! -f "$images_dir/$filename" ]; then
+                    curl -s "$url" -o "$images_dir/$filename"
+                fi
+            fi
+        done <<< "$urls"
+    done
+    
+    echo "✓ Images backed up"
+}
+
+backup_themes() {
+    local backup_path="$1"
+    local themes_dir="$backup_path/themes"
+    
+    echo "Backing up themes..."
+    
+    # If using Docker, copy from the volume
+    if docker volume ls | grep -q "ghost_content"; then
+        docker run --rm \
+            -v ghost_content:/content \
+            -v "$(pwd)/$backup_path/themes:/backup" \
+            alpine \
+            sh -c "cp -r /content/themes/* /backup/"
+    else
+        # Try local theme directory
+        cp -r "${GHOST_THEMES_DIR:-./content/themes}"/* "$themes_dir/"
+    fi
+    
+    echo "✓ Themes backed up"
+}
+
+create_backup_dirs() {
+    local backup_path="$BACKUP_DIR/$DATE_FORMAT"
+    mkdir -p "$backup_path"/{posts,images,files,themes}
+    echo "$backup_path"
+}
+
+create_archive() {
+    local backup_path="$1"
+    local archive_name="ghost_backup_$DATE_FORMAT.tar.gz"
+    
+    echo "Creating compressed archive..."
+    tar -czf "$BACKUP_DIR/$archive_name" -C "$BACKUP_DIR" "$(basename "$backup_path")"
+    
+    echo "✓ Backup archive created: $BACKUP_DIR/$archive_name"
+    
+    # Cleanup uncompressed files
+    rm -rf "$backup_path"
+}
+
+perform_backup() {
+    local skip_images=false
+    local skip_themes=false
+    
+    # Parse arguments
+    while [[ "$#" -gt 0 ]]; do
+        case $1 in
+            --no-images) skip_images=true ;;
+            --no-themes) skip_themes=true ;;
+            *) echo "Unknown parameter: $1"; return 1 ;;
+        esac
+        shift
+    done
+    
+    local backup_path=$(create_backup_dirs)
+    backup_posts "$backup_path"
+    
+    if [ "$skip_images" = false ]; then
+        backup_images "$backup_path"
+    fi
+    
+    if [ "$skip_themes" = false ]; then
+        backup_themes "$backup_path"
+    fi
+    
+    create_archive "$backup_path"
+}
+
+list_backups() {
+    echo "Available backups:"
+    if [ -d "$BACKUP_DIR" ]; then
+        # Get the list of backups sorted by date (newest first)
+        for backup in $(ls -t "$BACKUP_DIR"/ghost_backup_*.tar.gz 2>/dev/null); do
+            echo "$(basename "$backup") ($(du -h "$backup" | cut -f1))"
+        done || echo "No backups found in $BACKUP_DIR"
+    else
+        echo "Backup directory $BACKUP_DIR does not exist"
+    fi
+}
+
+# Helper function for base64 URL encoding
+base64_url_encode() {
+    declare input=${1:-$(</dev/stdin)}
+    printf '%s' "${input}" | base64 | tr -d '=' | tr '+' '-' | tr '/' '_'
+}
+
+# Function to generate JWT token
+generate_jwt_token() {
+    local key_id="$1"
+    local key_secret="$2"
+    
+    # Get the current Unix timestamp and ensure it's an integer
+    local now=$(printf "%.0f" "$(date +%s)")
+    local five_mins=$((now + 300))
+    
+    # Create JWT header with kid
+    local header="{\"alg\":\"HS256\",\"typ\":\"JWT\",\"kid\":\"$key_id\"}"
+    local header_base64=$(printf '%s' "$header" | base64 | tr -d '=' | tr '+' '-' | tr '/' '_')
+    
+    # Create JWT payload (version 5 for v5.x)
+    local payload="{\"iat\":$now,\"exp\":$five_mins,\"aud\":\"/v5/admin/\"}"
+    local payload_base64=$(printf '%s' "$payload" | base64 | tr -d '=' | tr '+' '-' | tr '/' '_')
+    
+    # Combine header and payload
+    local header_payload="${header_base64}.${payload_base64}"
+    
+    # Create signature using the hex secret
+    local signature=$(printf '%s' "$header_payload" | openssl dgst -binary -sha256 -mac HMAC -macopt hexkey:"$key_secret" | base64 | tr -d '=' | tr '+' '-' | tr '/' '_')
+    
+    # Return the complete token
+    echo "${header_payload}.${signature}"
+}
+
+# Restore Functions
+restore_posts() {
+    local backup_dir="$1"
+    local posts_dir="$backup_dir/posts"
+    local target="$2"
+    local api_key="$GHOST_ADMIN_KEY"
+    
+    # Use local API key if restoring locally
+    if [ "$target" = "$GHOST_LOCAL_URL" ]; then
+        if [ -z "$GHOST_LOCAL_ADMIN_KEY" ]; then
+            echo "Error: GHOST_LOCAL_ADMIN_KEY is not set in your config"
+            echo "Get this from Ghost Admin -> Settings -> Integrations"
+            return 1
+        fi
+        api_key="$GHOST_LOCAL_ADMIN_KEY"
+    fi
+    
+    echo "Restoring posts..."
+    echo "Using Admin API key: $api_key"
+    echo "Target URL: $target"
+    
+    # Extract ID and Secret from API key
+    local key_id=$(echo "$api_key" | cut -d':' -f1)
+    local key_secret=$(echo "$api_key" | cut -d':' -f2)
+    
+    # For each post file in the backup
+    for post_file in "$posts_dir"/*.json; do
+        if [ ! -f "$post_file" ]; then
+            echo "No posts found in backup"
+            return 1
+        fi
+        
+        echo "Processing file: $post_file"
+        # Extract posts from the backup file
+        while IFS= read -r post; do
+            # Skip empty lines
+            [ -z "$post" ] && continue
+            
+            echo "Restoring post..."
+            
+            # Generate a fresh JWT token for each request
+            local jwt_token=$(generate_jwt_token "$key_id" "$key_secret")
+            
+            # Remove id and uuid fields to create new post
+            local cleaned_post=$(echo "$post" | jq 'del(.id, .uuid)')
+            
+            # Create post via Ghost Admin API
+            local response=$(curl -s -w "\n%{http_code}" \
+                -H "Authorization: Ghost ${jwt_token}" \
+                -H "Content-Type: application/json" \
+                -H "Accept-Version: v5.101" \
+                -d "{\"posts\": [$cleaned_post]}" \
+                "$target/ghost/api/admin/posts/?source=html")
+            
+            # Get status code (last line)
+            local status_code=$(echo "$response" | tail -n1)
+            # Get response body (all but last line)
+            local body=$(echo "$response" | sed \$d)
+            
+            if [ "$status_code" -eq 201 ] || [ "$status_code" -eq 200 ]; then
+                echo "✓ Post restored successfully"
+            else
+                echo "⚠️  Failed to restore post:"
+                echo "Status code: $status_code"
+                echo "Response: $body"
+            fi
+            
+            # Small delay to avoid overwhelming the API
+            sleep 1
+            
+        done < <(jq -c '.posts[]' "$post_file")
+    done
+    
+    echo "✓ Posts restore completed"
+}
+
+restore_images() {
+    local backup_dir="$1"
+    local images_dir="$backup_dir/images"
+    local target="$2"
+    local api_key="$GHOST_ADMIN_KEY"
+    
+    # Use local API key if restoring locally
+    if [ "$target" = "$GHOST_LOCAL_URL" ]; then
+        if [ -z "$GHOST_LOCAL_ADMIN_KEY" ]; then
+            echo "Error: GHOST_LOCAL_ADMIN_KEY is not set in your config"
+            echo "Get this from Ghost Admin -> Settings -> Integrations"
+            return 1
+        fi
+        api_key="$GHOST_LOCAL_ADMIN_KEY"
+    fi
+    
+    # Extract ID and Secret from API key
+    local key_id=$(echo "$api_key" | cut -d':' -f1)
+    local key_secret=$(echo "$api_key" | cut -d':' -f2)
+    
+    echo "Restoring images..."
+    
+    # For each image in the backup
+    for image in "$images_dir"/*; do
+        if [ -f "$image" ]; then
+            echo "Uploading image: $(basename "$image")"
+            
+            # Generate a fresh JWT token for each request
+            local jwt_token=$(generate_jwt_token "$key_id" "$key_secret")
+            
+            # Upload image via Ghost Admin API
+            local response=$(curl -s -w "\n%{http_code}" \
+                -H "Authorization: Ghost ${jwt_token}" \
+                -H "Accept-Version: v5.101" \
+                -F "file=@$image;filename=$(basename "$image")" \
+                -F "purpose=image" \
+                "$target/ghost/api/admin/images/upload/")
+            
+            # Get status code (last line)
+            local status_code=$(echo "$response" | tail -n1)
+            # Get response body (all but last line)
+            local body=$(echo "$response" | sed \$d)
+            
+            if [ "$status_code" -eq 201 ] || [ "$status_code" -eq 200 ]; then
+                echo "✓ Image uploaded successfully"
+            else
+                echo "⚠️  Failed to upload image:"
+                echo "Status code: $status_code"
+                echo "Response: $body"
+            fi
+            
+            # Small delay to avoid overwhelming the API
+            sleep 1
+        fi
+    done
+    
+    echo "✓ Images restored"
+}
+
+restore_themes() {
+    local backup_dir="$1"
+    local themes_dir="$backup_dir/themes"
+    local target="$2"
+    local api_key="$GHOST_ADMIN_KEY"
+    
+    # Use local API key if restoring locally
+    if [ "$target" = "$GHOST_LOCAL_URL" ]; then
+        if [ -z "$GHOST_LOCAL_ADMIN_KEY" ]; then
+            echo "Error: GHOST_LOCAL_ADMIN_KEY is not set in your config"
+            echo "Get this from Ghost Admin -> Settings -> Integrations"
+            return 1
+        fi
+        api_key="$GHOST_LOCAL_ADMIN_KEY"
+    fi
+    
+    # Extract ID and Secret from API key
+    local key_id=$(echo "$api_key" | cut -d':' -f1)
+    local key_secret=$(echo "$api_key" | cut -d':' -f2)
+    
+    echo "Restoring themes..."
+    
+    # For each theme directory in the backup
+    for theme_dir in "$themes_dir"/*; do
+        if [ -d "$theme_dir" ]; then
+            local theme_name=$(basename "$theme_dir")
+            local temp_zip="/tmp/${theme_name}.zip"
+            
+            # Create zip of theme
+            (cd "$theme_dir" && zip -r "$temp_zip" .)
+            
+            # Generate a fresh JWT token for each request
+            local jwt_token=$(generate_jwt_token "$key_id" "$key_secret")
+            
+            # Upload theme via API
+            curl -X POST \
+                -H "Authorization: Ghost ${jwt_token}" \
+                -H "Accept-Version: v5.101" \
+                -F "file=@$temp_zip" \
+                "$target/ghost/api/admin/themes/"
+            
+            rm "$temp_zip"
+        fi
+    done
+    
+    echo "✓ Themes restored"
+}
+
+# Function to clean all existing posts
+clean_posts() {
+    local target="$1"
+    local api_key="$GHOST_ADMIN_KEY"
+    
+    # Use local API key if cleaning locally
+    if [ "$target" = "$GHOST_LOCAL_URL" ]; then
+        if [ -z "$GHOST_LOCAL_ADMIN_KEY" ]; then
+            echo "Error: GHOST_LOCAL_ADMIN_KEY is not set in your config"
+            echo "Get this from Ghost Admin -> Settings -> Integrations"
+            return 1
+        fi
+        api_key="$GHOST_LOCAL_ADMIN_KEY"
+    fi
+    
+    # Extract ID and Secret from API key
+    local key_id=$(echo "$api_key" | cut -d':' -f1)
+    local key_secret=$(echo "$api_key" | cut -d':' -f2)
+    
+    echo "Cleaning existing posts..."
+    
+    # Get all posts first
+    local jwt_token=$(generate_jwt_token "$key_id" "$key_secret")
+    local response=$(curl -s \
+        -H "Authorization: Ghost ${jwt_token}" \
+        -H "Accept-Version: v5.101" \
+        "$target/ghost/api/admin/posts/?limit=all&formats=mobiledoc,lexical,html")
+    
+    # Extract post IDs
+    local post_ids=($(echo "$response" | jq -r '.posts[].id'))
+    
+    if [ ${#post_ids[@]} -eq 0 ]; then
+        echo "No existing posts found"
+        return 0
+    fi
+    
+    echo "Found ${#post_ids[@]} posts to delete"
+    
+    # Delete each post
+    for post_id in "${post_ids[@]}"; do
+        echo "Deleting post $post_id..."
+        
+        # Generate fresh token for each request
+        jwt_token=$(generate_jwt_token "$key_id" "$key_secret")
+        
+        local delete_response=$(curl -s -w "\n%{http_code}" \
+            -X DELETE \
+            -H "Authorization: Ghost ${jwt_token}" \
+            -H "Accept-Version: v5.101" \
+            "$target/ghost/api/admin/posts/$post_id/")
+        
+        # Get status code (last line)
+        local status_code=$(echo "$delete_response" | tail -n1)
+        # Get response body (all but last line)
+        local body=$(echo "$delete_response" | sed \$d)
+        
+        if [ "$status_code" -eq 204 ] || [ "$status_code" -eq 200 ]; then
+            echo "✓ Post deleted successfully"
+        else
+            echo "⚠️  Failed to delete post:"
+            echo "Status code: $status_code"
+            echo "Response: $body"
+        fi
+        
+        # Small delay to avoid overwhelming the API
+        sleep 1
+    done
+    
+    echo "✓ All posts cleaned"
+}
+
+perform_restore() {
+    local target="$GHOST_LOCAL_URL"
+    local skip_images=false
+    local skip_themes=false
+    local backup_file=""
+    local clean_existing=false
+    
+    # Parse arguments
+    while [[ "$#" -gt 0 ]]; do
+        case $1 in
+            --remote) target="$GHOST_URL" ;;
+            --no-images) skip_images=true ;;
+            --no-themes) skip_themes=true ;;
+            --clean) clean_existing=true ;;
+            --file) 
+                shift
+                backup_file="$1" 
+                ;;
+            *) echo "Unknown parameter: $1"; return 1 ;;
+        esac
+        shift
+    done
+    
+    # Check if backup file is provided
+    if [ -z "$backup_file" ]; then
+        echo "Error: No backup file specified"
+        echo "Usage: poltertools restore --file <backup_file> [--remote] [--no-images] [--no-themes] [--clean]"
+        return 1
+    fi
+    
+    # Check if backup file exists
+    if [ ! -f "$backup_file" ]; then
+        echo "Error: Backup file not found: $backup_file"
+        return 1
+    fi
+    
+    # Check if we have the required API key
+    if [ "$target" = "$GHOST_LOCAL_URL" ]; then
+        if [ -z "$GHOST_LOCAL_ADMIN_KEY" ]; then
+            echo "Error: GHOST_LOCAL_ADMIN_KEY is not set in your config"
+            echo "Get this from Ghost Admin -> Settings -> Integrations"
+            return 1
+        fi
+    else
+        if [ -z "$GHOST_ADMIN_KEY" ]; then
+            echo "Error: GHOST_ADMIN_KEY is not set in your config"
+            return 1
+        fi
+    fi
+    
+    # Create temporary directory for extraction
+    local temp_dir=$(mktemp -d)
+    echo "Extracting backup to temporary directory..."
+    tar -xzf "$backup_file" -C "$temp_dir"
+    
+    # Find the backup directory (should be the only directory)
+    local backup_dir=$(find "$temp_dir" -maxdepth 1 -mindepth 1 -type d)
+    
+    echo "Restoring to: $target"
+    
+    # Clean existing posts if requested
+    if [ "$clean_existing" = true ]; then
+        clean_posts "$target"
+    fi
+    
+    # Perform restore operations
+    restore_posts "$backup_dir" "$target"
+    
+    if [ "$skip_images" = false ]; then
+        restore_images "$backup_dir" "$target"
+    fi
+    
+    if [ "$skip_themes" = false ]; then
+        restore_themes "$backup_dir" "$target"
+    fi
+    
+    # Cleanup
+    rm -rf "$temp_dir"
+    echo "✓ Restore completed successfully"
+}
+
 # Function to show help message
 show_help() {
-  echo "Poltertools - Ghost Theme Development Helper"
+  echo "Poltertools - Ghost Development & Management Tools"
   echo ""
-  echo "Usage: poltertools [command]"
+  echo "Usage: poltertools [command] [options]"
   echo ""
   echo "Commands:"
   echo "  start     Start Ghost instance with your theme directory mounted"
@@ -242,12 +768,27 @@ show_help() {
   echo "  restart   Restart Ghost (needed after locale file changes)"
   echo "  clean     Remove all Docker volumes for a fresh start"
   echo "  package   Create a ZIP file of your theme for deployment"
+  echo "  backup    Create a full backup of your Ghost site"
+  echo "  backups   List available backups"
+  echo "  restore   Restore a backup to local or remote Ghost instance"
   echo "  help      Show this help message"
   echo ""
+  echo "Backup Options:"
+  echo "  --no-images    Skip backing up images"
+  echo "  --no-themes    Skip backing up themes"
+  echo ""
+  echo "Restore Options:"
+  echo "  --file <file>  Specify backup file to restore"
+  echo "  --remote       Restore to remote Ghost instance (default: local)"
+  echo "  --no-images    Skip restoring images"
+  echo "  --no-themes    Skip restoring themes"
+  echo ""
   echo "Examples:"
-  echo "  poltertools start              # Start Ghost with your theme"
-  echo "  poltertools restart            # Restart after locale changes"
-  echo "  poltertools clean && start     # Start fresh"
+  echo "  poltertools start                    # Start Ghost with your theme"
+  echo "  poltertools backup                   # Create a full backup"
+  echo "  poltertools backup --no-images       # Backup without images"
+  echo "  poltertools restore --file backup.tar.gz      # Restore to local"
+  echo "  poltertools restore --file backup.tar.gz --remote  # Restore to remote"
   echo ""
   echo "Environment Variables:"
   echo "  GHOST_THEMES_DIR   Path to your themes directory"
@@ -267,27 +808,42 @@ show_help() {
 }
 
 # Main script logic
-case $1 in
-  start)
-    run_docker_compose
-    ;;
-  stop)
-    stop_docker_compose
-    ;;
-  restart)
-    restart_ghost
-    ;;
-  clean)
-    clean_docker_volumes
-    ;;
-  package)
-    package_theme
-    ;;
-  help)
-    show_help
-    ;;
-  *)
-    echo "Usage: poltertools [start|stop|restart|clean|package|help]"
-    echo "Run 'poltertools help' for detailed information"
-    ;;
+case "$1" in
+    "start")
+        run_docker_compose
+        ;;
+    "stop")
+        stop_docker_compose
+        ;;
+    "restart")
+        restart_ghost
+        ;;
+    "clean")
+        clean_docker_volumes
+        ;;
+    "package")
+        package_theme
+        ;;
+    "backup")
+        shift
+        load_config
+        perform_backup "$@"
+        ;;
+    "backups")
+        load_config
+        list_backups
+        ;;
+    "restore")
+        shift
+        load_config
+        perform_restore "$@"
+        ;;
+    "help"|"-h"|"--help"|"")
+        show_help
+        ;;
+    *)
+        echo "Unknown command: $1"
+        echo "Run 'poltertools help' for usage information"
+        exit 1
+        ;;
 esac

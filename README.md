@@ -43,15 +43,9 @@ GHOST_LOCAL_ADMIN_KEY="your_local_admin_api_key_here"
 # Path to your Ghost themes directory
 GHOST_THEMES_DIR="./content/themes"
 
-# WhisperVeil Configuration
-# Type of LLM to use (openai, etc)
-LLM_TYPE="openai"
-# Your LLM API key
-LLM_API_KEY="your_llm_api_key_here"
-# Interval between posts
-POST_INTERVAL="1h"
-# LLM model to use
-LLM_MODEL="gpt-3.5-turbo"
+# Backup Configuration
+# Directory where backups will be stored
+BACKUP_DIR="ghost_backups"
 ```
 
 To get your API keys:

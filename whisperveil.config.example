@@ -1,0 +1,25 @@
+# WhisperVeil Configuration
+# Type of LLM to use (openai, anthropic, etc)
+LLM_TYPE="openai"
+# Your LLM API key
+LLM_API_KEY="your_llm_api_key_here"
+# Model to use
+LLM_MODEL="gpt-3.5-turbo"
+
+# Ghost Configuration
+# Your Ghost Content API key (for reading content)
+GHOST_API_KEY="your_ghost_content_api_key_here"
+# Your Ghost Admin API key (for writing content)
+GHOST_ADMIN_KEY="your_ghost_admin_api_key_here"
+# Your Ghost blog URL
+GHOST_URL="https://your-blog-url.com"
+
+# Post Generation Settings
+# Interval between posts
+POST_INTERVAL="1h"
+# Topics to focus on (comma-separated)
+TOPICS="ai,technology,programming"
+# Post length (short, medium, long)
+POST_LENGTH="medium"
+# Writing style (casual, professional, academic)
+WRITING_STYLE="professional" 

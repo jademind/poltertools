@@ -13,26 +13,44 @@ A set of tools for managing Ghost blog development, backups, and content migrati
 ## Installation
 
 1. Clone this repository
-2. Copy `poltertools.config.example` to `poltertools.config`
-3. Update the configuration values in `poltertools.config`
-
-```bash
-cp poltertools.config.example poltertools.config
-```
+2. Copy configuration files:
+   ```bash
+   cp poltertools.config.example poltertools.config
+   cp poltertools.secrets.example poltertools.secrets
+   ```
+3. Update the configuration values in both files
 
 ## Configuration
 
-Edit `poltertools.config` and set the following values:
+The configuration is split into two files for security:
 
+### `poltertools.config`
+Contains non-sensitive configuration:
 ```bash
 # Ghost Configuration
-GHOST_API_KEY="your_ghost_content_api_key"        # Content API key for remote
-GHOST_ADMIN_KEY="your_ghost_admin_api_key"        # Admin API key for remote
 GHOST_URL="https://your-blog-url.com"            # Your remote Ghost blog URL
 GHOST_LOCAL_URL="http://localhost:2368"          # Local Ghost instance URL
+GHOST_THEMES_DIR="./content/themes"              # Path to your themes directory
+
+# WhisperVeil Configuration
+LLM_TYPE="openai"                                # Type of LLM to use
+POST_INTERVAL="1h"                               # Interval between posts
+LLM_MODEL="gpt-3.5-turbo"                       # LLM model to use
+```
+
+### `poltertools.secrets` (gitignored)
+Contains sensitive API keys:
+```bash
+# Remote Ghost instance
+GHOST_API_KEY="your_ghost_content_api_key"       # Content API key for remote
+GHOST_ADMIN_KEY="your_ghost_admin_api_key"       # Admin API key for remote
+
+# Local Ghost instance
 GHOST_LOCAL_API_KEY="your_local_content_api_key"  # Content API key for local
 GHOST_LOCAL_ADMIN_KEY="your_local_admin_api_key"  # Admin API key for local
-GHOST_THEMES_DIR="./content/themes"              # Path to your themes directory
+
+# WhisperVeil
+LLM_API_KEY="your_llm_api_key"                   # OpenAI/Anthropic API key
 ```
 
 To get your API keys:
@@ -122,9 +140,17 @@ The script uses Docker Compose to run Ghost locally. Your theme directory is mou
 │   └── themes/          # Your Ghost themes
 ├── ghost_backups/       # Backup archives
 ├── poltertools.sh       # Main script
-├── poltertools.config   # Configuration
+├── poltertools.config   # Non-sensitive configuration
+├── poltertools.secrets  # API keys and secrets (gitignored)
 └── docker-compose.yml   # Docker configuration
 ```
+
+### Security
+
+- All sensitive data (API keys, secrets) should be stored in `poltertools.secrets`
+- The `poltertools.secrets` file is gitignored to prevent accidental commits
+- Never commit API keys or secrets to version control
+- Always use the example files as templates
 
 ### Permissions
 

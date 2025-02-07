@@ -18,6 +18,10 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+poltertools.config
+!poltertools.config.example
+whisperveil.config
+!whisperveil.config.example
 
 # Docker
 .docker/

@@ -27,6 +27,7 @@ cd poltertools
 cp poltertools.config.example poltertools.config
 cp .env.deploy.example .env.deploy
 ```
+Be sure to update the configuration files with your own values.
 
 ### 2. Local Development Environment (Recommended)
 This helps you develop and test your theme locally before deploying.
@@ -42,6 +43,7 @@ mkdir -p content/themes/my-theme
 # Admin Panel: http://localhost:2368/ghost
 # Blog: http://localhost:2368
 ```
+You can chose any path for your theme directory, it will be mounted into the Ghost container. You also dont have to use the `my-theme` directory, it is just an example, any existing folder will do.
 
 Initial local setup tasks:
 1. Go to http://localhost:2368/ghost

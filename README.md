@@ -207,7 +207,7 @@ GHOST_URL="https://your-blog-url.com"
 GHOST_LOCAL_URL="http://localhost:2368"
 GHOST_LOCAL_API_KEY="your_local_content_api_key_here"
 GHOST_LOCAL_ADMIN_KEY="your_local_admin_api_key_here"
-GHOST_THEMES_DIR="./content/themes"
+GHOST_THEMES_DIR="./content/themes"  # Path to your themes directory (default: ./content/themes)
 
 # Backup Configuration
 BACKUP_DIR="ghost_backups"
@@ -320,7 +320,7 @@ Benefits of Cloudflare:
 ### Local Development
 
 ```bash
-# Start Ghost with your theme mounted
+# Start Ghost with your theme mounted (from GHOST_THEMES_DIR)
 ./poltertools.sh start
 
 # Stop Ghost
@@ -335,28 +335,25 @@ Benefits of Cloudflare:
 
 ### Theme Development
 
+Your themes should be placed in the directory specified by `GHOST_THEMES_DIR` in your `poltertools.config`. If not specified, it defaults to `./content/themes`.
+
 ```bash
-# Package theme for deployment
-./poltertools.sh package
+# Example theme structure in your themes directory:
+content/themes/my-theme/
+├── assets/          # Images, CSS, JS
+├── default.hbs      # Main template
+├── index.hbs        # Homepage template
+├── post.hbs         # Single post template
+├── package.json     # Theme info
+└── partials/        # Reusable components
 ```
-
-Live reload is enabled for:
-- Template files (.hbs)
-- CSS/SCSS files
-- JavaScript files
-- Images and assets
-
-Restart required for:
-- Locale files (.json)
-- Theme configuration
-- Ghost settings
 
 ### Directory Structure
 
 ```
 .
 ├── content/
-│   └── themes/          # Your Ghost themes
+│   └── themes/          # Default themes directory (configurable in poltertools.config)
 ├── ghost_backups/       # Backup archives
 ├── deploy/              # Deployment scripts
 ├── poltertools.sh       # Main script
@@ -404,3 +401,35 @@ Restore options:
 3. Commit your changes
 4. Push to the branch
 5. Create a Pull Request
+
+## Command Reference
+
+```bash
+Commands:
+  start     Start Ghost instance with your theme directory mounted
+  stop      Stop the Ghost instance and related containers
+  restart   Restart Ghost (needed after locale file changes)
+  clean     Remove all Docker volumes for a fresh start
+  package   Create a ZIP file of your theme for deployment
+  backup    Create a full backup of your Ghost site
+  backups   List available backups
+  restore   Restore a backup to local or remote Ghost instance
+  deploy    Deploy Ghost to a remote server
+  help      Show this help message
+
+Configuration Files:
+  poltertools.config   Local development configuration
+  .env.deploy         Deployment configuration
+
+Live Reload Behavior:
+  • Immediate changes (no restart needed):
+    - Template files (.hbs)
+    - CSS/SCSS files
+    - JavaScript files
+    - Images and assets
+
+  • Changes requiring restart:
+    - Locale files (.json)
+    - Theme configuration
+    - Ghost settings
+```

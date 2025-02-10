@@ -16,17 +16,23 @@ load_config() {
 }
 
 # Function to check if GHOST_THEMES_DIR is set, and use a default if not
-check_env_variable() {
-  if [ -z "$GHOST_THEMES_DIR" ]; then
-    echo "Warning: GHOST_THEMES_DIR environment variable is not set."
-    echo "The default directory './content/themes' will be used."
-    GHOST_THEMES_DIR="./content/themes"
-  fi
-
-  if [ ! -d "$GHOST_THEMES_DIR" ]; then
-    echo "Error: The directory '$GHOST_THEMES_DIR' does not exist."
-    exit 1
-  fi
+check_themes_dir() {
+    # Load config if not already loaded
+    if [ -z "$GHOST_THEMES_DIR" ]; then
+        load_config
+    fi
+    
+    # Still use default if not set in config
+    if [ -z "$GHOST_THEMES_DIR" ]; then
+        echo "Warning: GHOST_THEMES_DIR not set in config."
+        echo "The default directory './content/themes' will be used."
+        GHOST_THEMES_DIR="./content/themes"
+    fi
+    
+    if [ ! -d "$GHOST_THEMES_DIR" ]; then
+        echo "Error: The directory '$GHOST_THEMES_DIR' does not exist."
+        exit 1
+    fi
 }
 
 # Function to check which docker compose command is available
@@ -90,28 +96,28 @@ fix_permissions() {
 
 # Function to start Docker Compose
 run_docker_compose() {
-  check_env_variable
-  echo "Starting Ghost"
-  docker_cmd=$(get_docker_compose_cmd)
-  
-  # Fix permissions before starting
-  fix_permissions "$GHOST_THEMES_DIR"
-  
-  # Set user IDs
-  get_user_ids
-  $docker_cmd up -d
-  
-  # Wait a few seconds for the container to initialize
-  echo "Waiting for Ghost to start..."
-  sleep 5
-  
-  # Check if the container is actually running
-  if $docker_cmd ps | grep -q "ghost"; then
-    show_access_urls
-  else
-    echo "❌ Error: Ghost container failed to start properly."
-    echo "Check the logs with: $docker_cmd logs"
-  fi
+    check_themes_dir
+    echo "Starting Ghost"
+    docker_cmd=$(get_docker_compose_cmd)
+    
+    # Fix permissions before starting
+    fix_permissions "$GHOST_THEMES_DIR"
+    
+    # Set user IDs
+    get_user_ids
+    $docker_cmd up -d
+    
+    # Wait a few seconds for the container to initialize
+    echo "Waiting for Ghost to start..."
+    sleep 5
+    
+    # Check if the container is actually running
+    if $docker_cmd ps | grep -q "ghost"; then
+        show_access_urls
+    else
+        echo "❌ Error: Ghost container failed to start properly."
+        echo "Check the logs with: $docker_cmd logs"
+    fi
 }
 
 # Function to stop Docker Compose
@@ -124,90 +130,90 @@ stop_docker_compose() {
 
 # Function to package the theme into a ZIP file
 package_theme() {
-  check_env_variable
-  
-  # List all directories in the themes directory
-  echo "Available themes:"
-  themes=()
-  index=1
-  
-  # Store themes in an array and display them with numbers
-  while IFS= read -r dir; do
-    # Skip hidden directories (starting with .)
-    if [ -d "$dir" ] && [[ ! "$(basename "$dir")" =~ ^\. ]]; then
-      themes+=("$dir")
-      echo "$index) $(basename "$dir")"
-      ((index++))
+    check_themes_dir
+    
+    # List all directories in the themes directory
+    echo "Available themes:"
+    themes=()
+    index=1
+    
+    # Store themes in an array and display them with numbers
+    while IFS= read -r dir; do
+        # Skip hidden directories (starting with .)
+        if [ -d "$dir" ] && [[ ! "$(basename "$dir")" =~ ^\. ]]; then
+            themes+=("$dir")
+            echo "$index) $(basename "$dir")"
+            ((index++))
+        fi
+    done < <(find "$GHOST_THEMES_DIR" -maxdepth 1 -mindepth 1 -type d)
+    
+    # Check if any themes were found
+    if [ ${#themes[@]} -eq 0 ]; then
+        echo "❌ No themes found in $GHOST_THEMES_DIR"
+        exit 1
     fi
-  done < <(find "$GHOST_THEMES_DIR" -maxdepth 1 -mindepth 1 -type d)
-  
-  # Check if any themes were found
-  if [ ${#themes[@]} -eq 0 ]; then
-    echo "❌ No themes found in $GHOST_THEMES_DIR"
-    exit 1
-  fi
-  
-  # Prompt user to select a theme
-  echo ""
-  read -p "Select a theme number (1-${#themes[@]}): " selection
-  
-  # Validate selection
-  if ! [[ "$selection" =~ ^[0-9]+$ ]] || [ "$selection" -lt 1 ] || [ "$selection" -gt ${#themes[@]} ]; then
-    echo "❌ Invalid selection"
-    exit 1
-  fi
-  
-  # Get the selected theme path and name
-  selected_theme="${themes[$((selection-1))]}"
-  theme_name=$(basename "$selected_theme")
-  timestamp=$(date +%Y%m%d-%H%M%S)
-  zip_file="${theme_name}-${timestamp}.zip"
-  ignore_file=".package-ignore"
-  
-  echo "Packaging theme: $theme_name"
-  
-  # Store the original directory
-  original_dir=$(pwd)
-  
-  if cd "$selected_theme"; then
-    # Create a temporary exclusion pattern file for zip
-    temp_exclude=$(mktemp)
     
-    # Read .package-ignore and format each line for zip's exclude pattern
-    while IFS= read -r pattern || [ -n "$pattern" ]; do
-      # Skip empty lines and comments
-      [[ -z "$pattern" || "$pattern" =~ ^# ]] && continue
-      # Add proper wildcards for directory patterns
-      if [[ "$pattern" == *"/" ]]; then
-        echo "$pattern*" >> "$temp_exclude"
-      else
-        # Handle both file and directory patterns
-        echo "$pattern" >> "$temp_exclude"
-        echo "*/$pattern" >> "$temp_exclude"  # Match pattern in subdirectories
-      fi
-    done < "$original_dir/$ignore_file"
+    # Prompt user to select a theme
+    echo ""
+    read -p "Select a theme number (1-${#themes[@]}): " selection
     
-    # Debug output
-    echo "Using the following exclusion patterns:"
-    cat "$temp_exclude"
+    # Validate selection
+    if ! [[ "$selection" =~ ^[0-9]+$ ]] || [ "$selection" -lt 1 ] || [ "$selection" -gt ${#themes[@]} ]; then
+        echo "❌ Invalid selection"
+        exit 1
+    fi
     
-    # Create zip file with exclusions
-    if zip -r "$original_dir/$zip_file" . -x@"$temp_exclude"; then
-      echo "✨ Theme packaged successfully as: $zip_file"
+    # Get the selected theme path and name
+    selected_theme="${themes[$((selection-1))]}"
+    theme_name=$(basename "$selected_theme")
+    timestamp=$(date +%Y%m%d-%H%M%S)
+    zip_file="${theme_name}-${timestamp}.zip"
+    ignore_file=".package-ignore"
+    
+    echo "Packaging theme: $theme_name"
+    
+    # Store the original directory
+    original_dir=$(pwd)
+    
+    if cd "$selected_theme"; then
+        # Create a temporary exclusion pattern file for zip
+        temp_exclude=$(mktemp)
+        
+        # Read .package-ignore and format each line for zip's exclude pattern
+        while IFS= read -r pattern || [ -n "$pattern" ]; do
+            # Skip empty lines and comments
+            [[ -z "$pattern" || "$pattern" =~ ^# ]] && continue
+            # Add proper wildcards for directory patterns
+            if [[ "$pattern" == *"/" ]]; then
+                echo "$pattern*" >> "$temp_exclude"
+            else
+                # Handle both file and directory patterns
+                echo "$pattern" >> "$temp_exclude"
+                echo "*/$pattern" >> "$temp_exclude"  # Match pattern in subdirectories
+            fi
+        done < "$original_dir/$ignore_file"
+        
+        # Debug output
+        echo "Using the following exclusion patterns:"
+        cat "$temp_exclude"
+        
+        # Create zip file with exclusions
+        if zip -r "$original_dir/$zip_file" . -x@"$temp_exclude"; then
+            echo "✨ Theme packaged successfully as: $zip_file"
+        else
+            echo "❌ Error creating zip file"
+            cd "$original_dir"
+            rm "$temp_exclude"
+            exit 1
+        fi
+        
+        # Clean up temporary file
+        cd "$original_dir"
+        rm "$temp_exclude"
     else
-      echo "❌ Error creating zip file"
-      cd "$original_dir"
-      rm "$temp_exclude"
-      exit 1
+        echo "Failed to access directory: $selected_theme"
+        exit 1
     fi
-    
-    # Clean up temporary file
-    cd "$original_dir"
-    rm "$temp_exclude"
-  else
-    echo "Failed to access directory: $selected_theme"
-    exit 1
-  fi
 }
 
 # Function to clean up Docker volumes
@@ -774,92 +780,23 @@ show_help() {
   echo "  deploy    Deploy Ghost to a remote server"
   echo "  help      Show this help message"
   echo ""
-  echo "Deployment Options:"
-  echo "  deploy    Deploy Ghost to remote server (auto-installs dependencies)"
-  echo ""
-  echo "Backup Options:"
-  echo "  --no-images    Skip backing up images"
-  echo "  --no-themes    Skip backing up themes"
-  echo ""
-  echo "Restore Options:"
-  echo "  --file <file>  Specify backup file to restore"
-  echo "  --remote       Restore to remote Ghost instance (default: local)"
-  echo "  --no-images    Skip restoring images"
-  echo "  --no-themes    Skip restoring themes"
-  echo "  --clean        Delete existing posts before restore"
-  echo ""
   echo "Examples:"
-  echo "  Local Development:"
-  echo "    # Start a local Ghost instance for theme development"
-  echo "    cp poltertools.config.example poltertools.config"
-  echo "    # Edit poltertools.config and set GHOST_THEMES_DIR"
-  echo "    ./poltertools.sh start"
+  echo "  # Start local development"
+  echo "  cp poltertools.config.example poltertools.config"
+  echo "  ./poltertools.sh start"
   echo ""
-  echo "    # Watch theme changes and restart when needed"
-  echo "    ./poltertools.sh restart"
+  echo "  # Package theme"
+  echo "  ./poltertools.sh package"
   echo ""
-  echo "  Theme Packaging:"
-  echo "    # Package your theme for deployment"
-  echo "    ./poltertools.sh package"
+  echo "  # Deploy to server"
+  echo "  cp .env.deploy.example .env.deploy"
+  echo "  ./poltertools.sh deploy"
   echo ""
-  echo "  Deployment:"
-  echo "    # Deploy Ghost to a remote server"
-  echo "    cp .env.deploy.example .env.deploy"
-  echo "    # Edit .env.deploy with your server details"
-  echo "    ./poltertools.sh deploy"
+  echo "  # Backup and restore"
+  echo "  ./poltertools.sh backup"
+  echo "  ./poltertools.sh restore --file backup.tar.gz"
   echo ""
-  echo "  Backup & Restore:"
-  echo "    # Create a full backup"
-  echo "    ./poltertools.sh backup"
-  echo ""
-  echo "    # Restore to local instance"
-  echo "    ./poltertools.sh restore --file backup.tar.gz"
-  echo ""
-  echo "    # Restore to remote instance"
-  echo "    ./poltertools.sh restore --file backup.tar.gz --remote"
-  echo ""
-  echo "Environment Variables:"
-  echo "  GHOST_THEMES_DIR   Path to your themes directory"
-  echo "                     Default: ./content/themes"
-  echo ""
-  echo "Configuration Files:"
-  echo "  poltertools.config   Local development configuration"
-  echo "  .env.deploy          Deployment configuration"
-  echo ""
-  echo "Live Reload Behavior:"
-  echo "  • Immediate changes (no restart needed):"
-  echo "    - Template files (.hbs)"
-  echo "    - CSS/SCSS files"
-  echo "    - JavaScript files"
-  echo "    - Images and assets"
-  echo ""
-  echo "  • Changes requiring restart:"
-  echo "    - Locale files (.json)"
-  echo "    - Theme configuration"
-  echo "    - Ghost settings"
-  echo ""
-  echo "Theme Development Workflow:"
-  echo "  1. Setup local environment:"
-  echo "     mkdir -p content/themes/my-theme"
-  echo "     # Add your theme files to content/themes/my-theme"
-  echo "     ./poltertools.sh start"
-  echo ""
-  echo "  2. Access your local Ghost instance:"
-  echo "     • Admin: http://localhost:2368/ghost"
-  echo "     • Blog: http://localhost:2368"
-  echo ""
-  echo "  3. Develop your theme:"
-  echo "     • Edit files in content/themes/my-theme"
-  echo "     • Changes are reflected immediately"
-  echo "     • Use restart for locale/config changes"
-  echo ""
-  echo "  4. Package for deployment:"
-  echo "     ./poltertools.sh package"
-  echo ""
-  echo "  5. Deploy to production:"
-  echo "     • Configure .env.deploy"
-  echo "     • Run ./poltertools.sh deploy"
-  echo "     • Upload theme package via Ghost Admin"
+  echo "For detailed documentation, see README.md"
 }
 
 # Function to setup remote host
@@ -930,18 +867,23 @@ deploy() {
 # Main script logic
 case "$1" in
     "start")
+        load_config
         run_docker_compose
         ;;
     "stop")
+        load_config
         stop_docker_compose
         ;;
     "restart")
+        load_config
         restart_ghost
         ;;
     "clean")
+        load_config
         clean_docker_volumes
         ;;
     "package")
+        load_config
         package_theme
         ;;
     "backup")

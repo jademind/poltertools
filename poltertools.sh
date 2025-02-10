@@ -807,6 +807,86 @@ show_help() {
   echo "    - Ghost settings"
 }
 
+# Function to setup remote host
+setup_remote() {
+    if [ -z "$1" ]; then
+        echo "Error: No host specified"
+        echo "Usage: poltertools.sh setup-remote user@host"
+        return 1
+    fi
+
+    local remote_host="$1"
+    
+    echo "Setting up remote host: $remote_host"
+    
+    # Install Docker
+    ssh "$remote_host" '
+        # Update package list
+        sudo apt-get update
+        
+        # Install dependencies
+        sudo apt-get install -y \
+            apt-transport-https \
+            ca-certificates \
+            curl \
+            gnupg \
+            lsb-release
+            
+        # Add Docker GPG key
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+        
+        # Add Docker repository
+        echo \
+          "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \
+          $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+          
+        # Install Docker
+        sudo apt-get update
+        sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+        
+        # Add current user to docker group
+        sudo usermod -aG docker $USER
+        
+        # Create directories for Traefik
+        sudo mkdir -p /etc/traefik
+        sudo touch /etc/traefik/acme.json
+        sudo chmod 600 /etc/traefik/acme.json
+    '
+    
+    echo "✓ Remote host setup complete"
+}
+
+# Function to deploy Ghost
+deploy() {
+    # Check if .env.deploy exists
+    if [ ! -f ".env.deploy" ]; then
+        echo "Error: .env.deploy file not found"
+        echo "Please copy .env.deploy.example to .env.deploy and update the values"
+        return 1
+    fi
+    
+    # Make deploy script executable
+    chmod +x deploy/deploy.sh
+    
+    # Run deployment
+    ./deploy/deploy.sh
+}
+
+# Function to show deployment help
+show_deployment_help() {
+    echo "Deployment Commands:"
+    echo "  setup-remote [user@host]  Setup Docker and dependencies on remote host"
+    echo "  deploy                    Deploy Ghost to remote host"
+    echo ""
+    echo "Before deploying:"
+    echo "1. Copy .env.deploy.example to .env.deploy and update values"
+    echo "2. Ensure remote host is properly setup using setup-remote"
+    echo ""
+    echo "Example workflow:"
+    echo "  poltertools.sh setup-remote user@example.com"
+    echo "  poltertools.sh deploy"
+}
+
 # Main script logic
 case "$1" in
     "start")
@@ -838,8 +918,16 @@ case "$1" in
         load_config
         perform_restore "$@"
         ;;
+    "setup-remote")
+        shift
+        setup_remote "$@"
+        ;;
+    "deploy")
+        deploy
+        ;;
     "help"|"-h"|"--help"|"")
         show_help
+        show_deployment_help
         ;;
     *)
         echo "Unknown command: $1"

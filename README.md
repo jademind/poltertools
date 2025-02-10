@@ -11,41 +11,57 @@ A set of tools for managing Ghost blog development, backups, and content migrati
 - 💾 Full site backup (posts, images, themes)
 - 🔄 Restore backups to local or remote Ghost instances
 - 🔧 Easy theme development with live reload
+- 🛡️ Simple deployment with Traefik and optional Cloudflare SSL/TLS
 
 ## Installation
 
 1. Clone this repository
-2. Copy configuration file:
+2. Copy configuration files:
    ```bash
    cp poltertools.config.example poltertools.config
+   cp .env.deploy.example .env.deploy
    ```
-3. Update the configuration values
+3. Update the configuration values in both files
 
 ## Configuration
 
-The configuration file contains all necessary settings. Copy the example file and update with your values:
-
-### `poltertools.config`
+### Development Configuration (`poltertools.config`)
 ```bash
 # Ghost Configuration
-# Your Ghost Content API key (for reading content)
-GHOST_API_KEY="your_ghost_content_api_key_here"
-# Your Ghost Admin API key (for writing content)
-GHOST_ADMIN_KEY="your_ghost_admin_api_key_here"
-# Your Ghost blog URL
+GHOST_API_KEY="your_ghost_content_api_key_here"  # Content API key for remote
+GHOST_ADMIN_KEY="your_ghost_admin_api_key_here"  # Admin API key for remote
 GHOST_URL="https://your-blog-url.com"
-# Your local Ghost instance URL (for development)
 GHOST_LOCAL_URL="http://localhost:2368"
-# Your local Ghost Content API key (for reading content)
 GHOST_LOCAL_API_KEY="your_local_content_api_key_here"
-# Your local Ghost Admin API key (for writing content)
 GHOST_LOCAL_ADMIN_KEY="your_local_admin_api_key_here"
-# Path to your Ghost themes directory
 GHOST_THEMES_DIR="./content/themes"
 
 # Backup Configuration
-# Directory where backups will be stored
 BACKUP_DIR="ghost_backups"
+```
+
+### Deployment Configuration (`.env.deploy`)
+```bash
+# Deployment Settings
+DEPLOY_HOST=your-server-ip
+DEPLOY_USER=root  # Usually 'root' for fresh servers
+
+# Ghost Settings
+GHOST_URL=http://your-server-ip  # Change to your domain when ready
+
+# Database Settings
+DB_NAME=ghost
+DB_USER=ghost
+DB_PASSWORD=your_secure_password
+DB_ROOT_PASSWORD=your_secure_root_password
+
+# Email Settings (required for password reset and notifications)
+MAIL_FROM=your-blog@your-domain.com
+MAIL_TRANSPORT=SMTP
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USER=your-email@gmail.com
+MAIL_PASSWORD=your-app-specific-password
 ```
 
 To get your API keys:
@@ -54,9 +70,79 @@ To get your API keys:
    - Admin API keys are required for restore operations
    - Format: `{id}:{secret}`
 
-Note: The actual config file with your API keys is gitignored to prevent accidental commits.
+## Deployment
 
-## Usage
+The script supports deploying Ghost to a remote server using Docker and Traefik, with optional Cloudflare SSL/TLS:
+
+```bash
+# Deploy Ghost to remote host
+./poltertools.sh deploy
+```
+
+### Prerequisites
+
+Remote host requirements:
+1. SSH access with key-based authentication
+2. User with sudo privileges
+3. At least 5GB of free disk space
+4. Port 80 available
+5. Ubuntu/Debian-based system
+
+Note: The deployment script will automatically:
+- Install Docker if not present
+- Configure Docker permissions
+- Install required dependencies
+- Setup necessary directories
+
+### Deployment Process
+
+The deployment script will:
+1. Check and install prerequisites
+2. Setup Docker network
+3. Configure Traefik for routing
+4. Setup MySQL with persistent storage
+5. Deploy Ghost with clean configuration
+
+After deployment:
+1. Visit `http://your-server-ip/ghost` to set up your admin account
+2. Configure your site settings
+3. Install your custom theme (see Theme Development section)
+
+### SSL/TLS Options
+
+#### Option 1: Testing (Default)
+The default deployment uses Traefik without SSL, suitable for initial testing:
+- Access via `http://your-server-ip`
+- No SSL certificate required
+- Quick to set up and test
+
+#### Option 2: Production with Cloudflare (Recommended)
+For production deployments, use Cloudflare for SSL/TLS:
+
+1. Add your domain to Cloudflare
+2. Update your domain's nameservers to use Cloudflare
+3. In Cloudflare dashboard:
+   - SSL/TLS → Overview → Select "Flexible"
+   - DNS → Add A record pointing to your server IP
+   - Enable proxy status (orange cloud)
+4. Update `.env.deploy`:
+   ```bash
+   GHOST_URL=https://your-domain.com
+   MAIL_FROM=ghost@your-domain.com
+   ```
+5. Redeploy:
+   ```bash
+   ./poltertools.sh deploy
+   ```
+
+Benefits of Cloudflare:
+- Free SSL/TLS certificates
+- DDoS protection
+- CDN caching
+- Analytics
+- Zero configuration on server
+
+## Development
 
 ### Local Development
 
@@ -92,6 +178,19 @@ Restart required for:
 - Theme configuration
 - Ghost settings
 
+### Directory Structure
+
+```
+.
+├── content/
+│   └── themes/          # Your Ghost themes
+├── ghost_backups/       # Backup archives
+├── deploy/              # Deployment scripts
+├── poltertools.sh       # Main script
+├── poltertools.config   # Development configuration
+└── .env.deploy         # Deployment configuration
+```
+
 ### Backup & Restore
 
 ```bash
@@ -124,31 +223,6 @@ Restore options:
 - `--no-images`: Skip restoring images
 - `--no-themes`: Skip restoring themes
 - `--clean`: Delete all existing posts before restoring
-
-## Development
-
-The script uses Docker Compose to run Ghost locally. Your theme directory is mounted into the container for live development.
-
-### Directory Structure
-
-```
-.
-├── content/
-│   └── themes/          # Your Ghost themes
-├── ghost_backups/       # Backup archives
-├── poltertools.sh       # Main script
-├── poltertools.config.example  # Configuration template
-└── docker-compose.yml   # Docker configuration
-```
-
-Note: Your actual `poltertools.config` file with API keys will be created locally but is not tracked in git.
-
-### Permissions
-
-The script handles permissions automatically:
-- Creates necessary directories
-- Sets correct ownership (node:node)
-- Sets appropriate permissions for Ghost operation
 
 ## Contributing
 

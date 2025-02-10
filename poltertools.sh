@@ -771,7 +771,11 @@ show_help() {
   echo "  backup    Create a full backup of your Ghost site"
   echo "  backups   List available backups"
   echo "  restore   Restore a backup to local or remote Ghost instance"
+  echo "  deploy    Deploy Ghost to a remote server"
   echo "  help      Show this help message"
+  echo ""
+  echo "Deployment Options:"
+  echo "  deploy    Deploy Ghost to remote server (auto-installs dependencies)"
   echo ""
   echo "Backup Options:"
   echo "  --no-images    Skip backing up images"
@@ -782,17 +786,45 @@ show_help() {
   echo "  --remote       Restore to remote Ghost instance (default: local)"
   echo "  --no-images    Skip restoring images"
   echo "  --no-themes    Skip restoring themes"
+  echo "  --clean        Delete existing posts before restore"
   echo ""
   echo "Examples:"
-  echo "  poltertools start                    # Start Ghost with your theme"
-  echo "  poltertools backup                   # Create a full backup"
-  echo "  poltertools backup --no-images       # Backup without images"
-  echo "  poltertools restore --file backup.tar.gz      # Restore to local"
-  echo "  poltertools restore --file backup.tar.gz --remote  # Restore to remote"
+  echo "  Local Development:"
+  echo "    # Start a local Ghost instance for theme development"
+  echo "    cp poltertools.config.example poltertools.config"
+  echo "    # Edit poltertools.config and set GHOST_THEMES_DIR"
+  echo "    ./poltertools.sh start"
+  echo ""
+  echo "    # Watch theme changes and restart when needed"
+  echo "    ./poltertools.sh restart"
+  echo ""
+  echo "  Theme Packaging:"
+  echo "    # Package your theme for deployment"
+  echo "    ./poltertools.sh package"
+  echo ""
+  echo "  Deployment:"
+  echo "    # Deploy Ghost to a remote server"
+  echo "    cp .env.deploy.example .env.deploy"
+  echo "    # Edit .env.deploy with your server details"
+  echo "    ./poltertools.sh deploy"
+  echo ""
+  echo "  Backup & Restore:"
+  echo "    # Create a full backup"
+  echo "    ./poltertools.sh backup"
+  echo ""
+  echo "    # Restore to local instance"
+  echo "    ./poltertools.sh restore --file backup.tar.gz"
+  echo ""
+  echo "    # Restore to remote instance"
+  echo "    ./poltertools.sh restore --file backup.tar.gz --remote"
   echo ""
   echo "Environment Variables:"
   echo "  GHOST_THEMES_DIR   Path to your themes directory"
   echo "                     Default: ./content/themes"
+  echo ""
+  echo "Configuration Files:"
+  echo "  poltertools.config   Local development configuration"
+  echo "  .env.deploy          Deployment configuration"
   echo ""
   echo "Live Reload Behavior:"
   echo "  • Immediate changes (no restart needed):"
@@ -805,6 +837,29 @@ show_help() {
   echo "    - Locale files (.json)"
   echo "    - Theme configuration"
   echo "    - Ghost settings"
+  echo ""
+  echo "Theme Development Workflow:"
+  echo "  1. Setup local environment:"
+  echo "     mkdir -p content/themes/my-theme"
+  echo "     # Add your theme files to content/themes/my-theme"
+  echo "     ./poltertools.sh start"
+  echo ""
+  echo "  2. Access your local Ghost instance:"
+  echo "     • Admin: http://localhost:2368/ghost"
+  echo "     • Blog: http://localhost:2368"
+  echo ""
+  echo "  3. Develop your theme:"
+  echo "     • Edit files in content/themes/my-theme"
+  echo "     • Changes are reflected immediately"
+  echo "     • Use restart for locale/config changes"
+  echo ""
+  echo "  4. Package for deployment:"
+  echo "     ./poltertools.sh package"
+  echo ""
+  echo "  5. Deploy to production:"
+  echo "     • Configure .env.deploy"
+  echo "     • Run ./poltertools.sh deploy"
+  echo "     • Upload theme package via Ghost Admin"
 }
 
 # Function to setup remote host
@@ -872,21 +927,6 @@ deploy() {
     ./deploy/deploy.sh
 }
 
-# Function to show deployment help
-show_deployment_help() {
-    echo "Deployment Commands:"
-    echo "  setup-remote [user@host]  Setup Docker and dependencies on remote host"
-    echo "  deploy                    Deploy Ghost to remote host"
-    echo ""
-    echo "Before deploying:"
-    echo "1. Copy .env.deploy.example to .env.deploy and update values"
-    echo "2. Ensure remote host is properly setup using setup-remote"
-    echo ""
-    echo "Example workflow:"
-    echo "  poltertools.sh setup-remote user@example.com"
-    echo "  poltertools.sh deploy"
-}
-
 # Main script logic
 case "$1" in
     "start")
@@ -927,7 +967,6 @@ case "$1" in
         ;;
     "help"|"-h"|"--help"|"")
         show_help
-        show_deployment_help
         ;;
     *)
         echo "Unknown command: $1"

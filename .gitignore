@@ -21,8 +21,6 @@ Thumbs.db
 !.env.deploy.example
 poltertools.config
 !poltertools.config.example
-whisperveil.config
-!whisperveil.config.example
 
 # Docker
 .docker/

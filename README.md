@@ -13,6 +13,179 @@ A set of tools for managing Ghost blog development, backups, and content migrati
 - 🔧 Easy theme development with live reload
 - 🛡️ Simple deployment with Traefik and optional Cloudflare SSL/TLS
 
+## Getting Started: Complete Setup Guide
+
+This guide will walk you through setting up your own Ghost blog from scratch using Poltertools.
+
+### 1. Initial Setup
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/poltertools.git
+cd poltertools
+
+# Create configuration files
+cp poltertools.config.example poltertools.config
+cp .env.deploy.example .env.deploy
+```
+
+### 2. Local Development Environment (Recommended)
+This helps you develop and test your theme locally before deploying.
+
+```bash
+# Create a theme directory
+mkdir -p content/themes/my-theme
+
+# Start the local Ghost instance
+./poltertools.sh start
+
+# Access your local Ghost:
+# Admin Panel: http://localhost:2368/ghost
+# Blog: http://localhost:2368
+```
+
+Initial local setup tasks:
+1. Go to http://localhost:2368/ghost
+2. Create your admin account
+3. Configure basic settings
+4. Start developing your theme in `content/themes/my-theme`
+
+### 3. Production Deployment
+#### 3.1 Server Prerequisites
+- A fresh Ubuntu/Debian server (DigitalOcean, Linode, etc.)
+- Domain name (optional for testing, required for production)
+- SSH access to your server
+
+#### 3.2 Configure Deployment
+Edit `.env.deploy`:
+```bash
+# Deployment Settings
+DEPLOY_HOST=your-server-ip
+DEPLOY_USER=root
+
+# Ghost Settings
+GHOST_URL=http://your-server-ip  # Change to https://your-domain.com later
+
+# Database Settings (change these!)
+DB_NAME=ghost
+DB_USER=ghost
+DB_PASSWORD=choose_secure_password
+DB_ROOT_PASSWORD=choose_secure_root_password
+
+# Email Settings (required for user signup/password reset)
+MAIL_FROM=your-blog@your-domain.com
+MAIL_TRANSPORT=SMTP
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USER=your-email@gmail.com
+MAIL_PASSWORD=your-app-specific-password
+```
+
+#### 3.3 Deploy Ghost
+```bash
+# Deploy to your server
+./poltertools.sh deploy
+```
+
+The script will automatically:
+- Install Docker and dependencies
+- Configure the network
+- Set up MySQL
+- Deploy Ghost
+- Configure Traefik for routing
+
+#### 3.4 Initial Configuration
+1. Visit `http://your-server-ip/ghost`
+2. Create your admin account
+3. Configure your site settings
+
+### 4. Theme Development and Deployment
+#### 4.1 Develop Your Theme
+```bash
+# Your theme files go in:
+content/themes/my-theme/
+
+# Common theme files:
+├── assets/          # Images, CSS, JS
+├── default.hbs      # Main template
+├── index.hbs        # Homepage template
+├── post.hbs         # Single post template
+├── package.json     # Theme info
+└── partials/        # Reusable components
+```
+
+#### 4.2 Package and Deploy Theme
+```bash
+# Create theme package
+./poltertools.sh package
+
+# This creates a ZIP file of your theme
+```
+
+Upload to production:
+1. Go to your production Ghost admin
+2. Settings → Design
+3. Upload the theme ZIP file
+
+### 5. Production Setup
+#### 5.1 Basic Setup (Testing)
+- Access via `http://your-server-ip`
+- Use for initial testing
+
+#### 5.2 Production Setup (with Domain)
+1. Add your domain to Cloudflare
+2. Update DNS:
+   - Point A record to your server IP
+   - Enable proxy (orange cloud)
+3. Configure SSL/TLS in Cloudflare:
+   - SSL/TLS → Overview → Select "Flexible"
+
+4. Update `.env.deploy`:
+```bash
+GHOST_URL=https://your-domain.com
+MAIL_FROM=ghost@your-domain.com
+```
+
+5. Redeploy:
+```bash
+./poltertools.sh deploy
+```
+
+### 6. Maintenance Operations
+#### Backups
+```bash
+# Create backup
+./poltertools.sh backup
+
+# List backups
+./poltertools.sh backups
+
+# Restore backup
+./poltertools.sh restore --file backup.tar.gz
+```
+
+#### Theme Updates
+```bash
+# After making theme changes:
+./poltertools.sh package
+# Upload new ZIP via Ghost Admin
+```
+
+#### Server Maintenance
+```bash
+# Restart Ghost
+ssh root@your-server-ip "docker restart ghost"
+
+# View logs
+ssh root@your-server-ip "docker logs ghost"
+```
+
+### 7. Next Steps
+1. Configure your site settings in Ghost Admin
+2. Set up email newsletter integration
+3. Add custom integrations if needed
+4. Set up regular backups
+5. Monitor your server's performance
+
 ## Installation
 
 1. Clone this repository
